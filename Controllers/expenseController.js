@@ -9,21 +9,28 @@ const ExpenseController = {
     addExpense: async (req, res) => {
         try {
             const token = req.headers.authorization.split(' ')[1];
+            if (!token) {
+                return res.status(401).json({error: 'Token is required'});
+            }
             const decoded = jwt.verify(token, process.env.JWT_KEY);
-            const userId = decoded.id;
-            const { amount, description, category, date } = req.body;
+            // const decoded = jwt.verify(token, process.env.JWT_KEY);
+            const user = await User.findById(decoded.userId);
+            if (!user) {
+                return res.status(404).json({error: 'User not found'});
+            }
+            const {amount, description, category: categoryName, date} = req.body;
             // Validate category
-            const categoryExists = await Category.findById(category);
-            if (!categoryExists) {
-                return res.status(404).json({ error: "Category not found" });
+            const category = await Category.findOne({name: categoryName});
+            if (!category) {
+                return res.status(404).json({error: "Category not found"});
             }
             // Create and save the expense
             const expense = new Expense({
                 _id: new mongoose.Types.ObjectId(),
                 amount,
                 description,
-                category,
-                user: userId,
+                category: category._id, // Assign the found category's ID
+                user: user._id,
                 date: date || Date.now(), // Use provided date or default to current date
             });
 
@@ -33,56 +40,142 @@ const ExpenseController = {
             res.status(400).json({error: "Error adding expense", details: err.message});
         }
     },
-
     // Get monthly expenses and totals
-    getMonthlyExpenses: async (req, res) => {
+    getCurrentMonthExpenses: async (req, res) => {
         try {
-            const user = req.user;
-            const currentMonth = new Date().getMonth();
-            const currentYear = new Date().getFullYear();
+            const token = req.headers.authorization.split(' ')[1];
+            if (!token) {
+                return res.status(401).json({error: 'Token is required'});
+            }
 
-            const monthlyExpenses = user.expenses.filter(expense => {
-                const date = new Date(expense.date);
-                return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+            const decoded = jwt.verify(token, process.env.JWT_KEY);
+            const userId = decoded.userId;
+
+            if (!userId) {
+                return res.status(400).json({error: "Invalid user token"});
+            }
+
+            const currentDate = new Date();
+            const currentMonth = currentDate.getMonth();
+            const currentYear = currentDate.getFullYear();
+
+            // Find all expenses for the user
+            const expenses = await Expense.find({user: userId}).populate('category');
+
+            // Filter expenses for the current month
+            const currentMonthExpenses = expenses.filter((expense) => {
+                const expenseDate = new Date(expense.date);
+                return (
+                    expenseDate.getMonth() === currentMonth &&
+                    expenseDate.getFullYear() === currentYear
+                );
             });
 
-            const totalExpense = monthlyExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-            res.status(200).json({monthlyExpenses, totalExpense});
+            const totalExpenses = currentMonthExpenses.reduce((total, expense) => total + expense.amount, 0);
+
+            res.status(200).json({
+                message: "Expenses for the current month",
+                expenses: currentMonthExpenses,
+                totalExpenses,
+            });
         } catch (err) {
-            res.status(500).json({error: "Error fetching expenses", details: err.message});
+            res.status(500).json({error: "Error fetching current month expenses", details: err.message});
         }
     },
     getMonthlyStatics: async (req, res) => {
         try {
-            const {token} = req.query;
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            const user = await User.findById(decoded.id);
+            const token = req.headers.authorization.split(' ')[1];
+            if (!token) {
+                return res.status(401).json({error: 'Token is required'});
+            }
 
-            const currentMonth = new Date().getMonth();
-            const currentYear = new Date().getFullYear();
+            const decoded = jwt.verify(token, process.env.JWT_KEY);
+            const userId = decoded.userId;
 
-            const monthlyExpenses = user.expenses.filter(expense => {
-                const date = new Date(expense.date);
-                return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+            if (!userId) {
+                return res.status(400).json({error: "Invalid user token"});
+            }
+
+            const currentDate = new Date();
+            const currentMonth = currentDate.getMonth();
+            const currentYear = currentDate.getFullYear();
+
+            // Find all expenses for the user
+            const expenses = await Expense.find({user: userId}).populate('category');
+
+            // Filter expenses for the current month
+            const currentMonthExpenses = expenses.filter((expense) => {
+                const expenseDate = new Date(expense.date);
+                return (
+                    expenseDate.getMonth() === currentMonth &&
+                    expenseDate.getFullYear() === currentYear
+                );
             });
 
-            const totalExpense = monthlyExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-            const remainingIncome = user.monthlyIncome - totalExpense;
-            const averageDailyExpense = totalExpense / new Date(currentYear, currentMonth + 1, 0).getDate();
+            // Total Expenses for the month
+            const totalExpenses = currentMonthExpenses.reduce((total, expense) => total + expense.amount, 0);
 
-            const typeStatistics = monthlyExpenses.reduce((stats, expense) => {
-                stats[expense.type] = (stats[expense.type] || 0) + expense.amount;
+            // Remaining Income for the month
+            const user = await User.findById(userId); // Fetch the user's details to get the monthly income
+            const remainingIncome = user.monthlyIncome - totalExpenses;
+
+            // Average Daily Expense
+            const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate(); // Get the number of days in the current month
+            const averageDailyExpense = totalExpenses / daysInMonth;
+
+            res.status(200).json({
+                message: "Current month statistics",
+                totalExpenses,
+                remainingIncome,
+                averageDailyExpense,
+            });
+        } catch (err) {
+            res.status(500).json({error: 'Error fetching statistics', details: err.message});
+        }
+    },
+    getExpenseTypeStatistics: async (req, res) => {
+        try {
+            const token = req.headers.authorization.split(' ')[1];
+            if (!token) {
+                return res.status(401).json({error: 'Token is required'});
+            }
+
+            const decoded = jwt.verify(token, process.env.JWT_KEY);
+            const userId = decoded.userId;
+
+            if (!userId) {
+                return res.status(400).json({error: "Invalid user token"});
+            }
+
+            const currentDate = new Date();
+            const currentMonth = currentDate.getMonth();
+            const currentYear = currentDate.getFullYear();
+
+            // Find all expenses for the user
+            const expenses = await Expense.find({user: userId}).populate('category');
+
+            // Filter expenses for the current month
+            const currentMonthExpenses = expenses.filter((expense) => {
+                const expenseDate = new Date(expense.date);
+                return (
+                    expenseDate.getMonth() === currentMonth &&
+                    expenseDate.getFullYear() === currentYear
+                );
+            });
+
+            // Group expenses by category and calculate total for each
+            const categoryStatistics = currentMonthExpenses.reduce((stats, expense) => {
+                const categoryName = expense.category.name; // Assumes 'name' field exists in Category model
+                stats[categoryName] = (stats[categoryName] || 0) + expense.amount;
                 return stats;
             }, {});
 
             res.status(200).json({
-                totalExpense,
-                remainingIncome,
-                averageDailyExpense,
-                typeStatistics,
+                message: "Expense type statistics for the current month",
+                categoryStatistics,
             });
         } catch (err) {
-            res.status(500).json({error: 'Error fetching statistics', details: err.message});
+            res.status(500).json({error: "Error fetching expense type statistics", details: err.message});
         }
     }
 };
