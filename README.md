@@ -21,12 +21,16 @@ The **Expense Management API** provides a comprehensive solution for managing ex
    ```bash
    git clone https://github.com/belalyasin/Expense_Management_Api.git
    cd Expense_Management_Api
-2. npm install
+2. Install dependencies:
+      ```bash
+      npm install
 3. Set up the environment variables:
    - Create a .env file in the root directory.
    - Add the following variables:
-       - PORT=3000
-       - MONGO_URI=your_mongodb_connection_string
-       - JWT_KEY=your_jwt_secret_key
+      ```bash
+         - PORT=3000
+         - MONGO_URI=your_mongodb_connection_string
+         - JWT_KEY=your_jwt_secret_key
 4. Start the server:
-   - npm start
+      ```bash
+       npm start
