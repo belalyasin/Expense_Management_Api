@@ -7,6 +7,7 @@ const passport = require('passport');
 const connectToDB = require("./config/dbConnection");
 const userRoute = require('./Routes/userRoute');
 const expenseRoute = require('./Routes/expenseRoute');
+const categoryRoute = require('./Routes/categoryRoute');
 const dotenv = require("dotenv");
 dotenv.config({ path: "./.env" });
 
@@ -40,7 +41,8 @@ app.use(passport.session());
 
 // Route
 app.use("/api/user", userRoute);
-app.use("/api/v1/expense", expenseRoute);
+app.use("/api/expense", expenseRoute);
+app.use("/api/category", categoryRoute);
 
 app.use((req, res, next) => {
     const error = new Error("Not found");
